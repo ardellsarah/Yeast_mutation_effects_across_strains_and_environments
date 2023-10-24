@@ -18,5 +18,8 @@ The file “CoreFigureCode.R”, when run with the relevant data files in the wo
 -	**Mut_fullInfo_use**: Maps mutation numerical IDs to the gene they are in or nearby
 -	**JohnsonDFEmeanDat** – can be created given data from Johnson et al 2019: simply need the strain names and the corresponding parameters: DFEmean, DFEvar, DFEskew , DFEmean_min, DFEmean_max, DFEvar_min, DFEvar_max, DFEskew_min, DFEskew_max.
 -	  The growth rates provided in Johnson et al 2019 are largely relative growth rate metrics. We convert these to exponential growth rate using the relationship between relative and exponential growth given in their supplemental figure S9. 
+-	**allBCMatches**: Contains raw data of barcode counts for the confirmation experiment.
+-	**transferODtable**: Contains information to convert data file names to relevant sample information for the confirmation experiment
+
 
 Note that many sections depend on data files created in other sections, so it is best run all together, Total runtime is less than 10 minutes (on Mac 16GB Ram M1 chip laptop). 
