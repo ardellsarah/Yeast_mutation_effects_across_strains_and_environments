@@ -1,5 +1,5 @@
 # Yeast_mutation_effects_across_strains_and_environments
-This repository contains all relevant code for completing analyses and producing figures for the paper 'Environment-independent distribution of mutational effects emerges from microscopic epistasis'
+This repository contains all relevant code for completing analyses and producing figures for the paper 'Environment-independent distribution of mutational effects emerges from microscopic epistasis' [Code and data will be posted upon publication]
 
 The file “CoreFigureCode.R”, when run with the relevant data files in the working directory, will produce all main text and supplemental figures. Note that the following files are required (and, apart from data we source from Johnson et al 2019, are readily available in this repository):
 -	**df_s_ests_wGR** : Contains the average fitness effect estimates for all mutations in all strains and environments where we had sufficient measurements. Column names are as follows
