@@ -1387,183 +1387,183 @@ allGrhist_a = ggarrange(plotlist = allGRhist, nrow = 1, ncol = 6)
 
 
 # ~~ Plot: Confirmation Experiment ####
-
-## DATA NEEDED
-allBCs_Matches = read.csv("allBarcodeMatches.csv")
-transferODtable = read.csv("TransferODTable.csv")
-#df_s_ests_wGR = read.csv(  paste0('df_s_ests_wGR_myGRest.csv'))
-
-
-## Analysis
-transferODtable$Strain = substr(transferODtable$Sample, 4,10)
-transferODtable$Rep = substr(transferODtable$Sample, 1,2)
-
-mutInfoDF = subset(transferODtable, (Rep %in% c('1-', '2-')))
-
-transferODtable = subset(transferODtable, !(Rep %in% c('1-', '2-'))) # get rid of rows with the libary IDs 
-transferODtable$env = NA
-transferODtable$env[transferODtable$ID %in% 1:60] = 'e1'
-transferODtable$env[transferODtable$ID %in% 61:102] = 'e2'
-names(transferODtable)[names(transferODtable) == 'ID'] = 'samp'
-transferODtable$samp = as.factor(transferODtable$samp)
-
-
-# ~~ Add sample and Mut Info to data frame
-names(transferODtable)[names(transferODtable) == 'samp'] = 'sampID'
-transferODtable$sampID = as.numeric(transferODtable$samp)
-
-df_MappedReads_use = inner_join(allBCs_Matches, transferODtable, by = 'sampID')
-mutInfoDF = mutInfoDF[, c('ID', 'Strain', 'Rep')]
-names(mutInfoDF) = c('allMatchedSample_name','Mut_ID', 'Rep' )
-mutInfoDF$Rep = substr(mutInfoDF$Rep,1,1)
-mutInfoDF$allMatchedSample = paste0('sample_', mutInfoDF$allMatchedSample_name)
-mutInfoDF$Rep = paste0('R', mutInfoDF$Rep)
-mutInfoDF = mutInfoDF[, c('allMatchedSample', 'Mut_ID', 'Rep')]
-
-
-df_MappedReads_withMut = inner_join(df_MappedReads_use, mutInfoDF, by = c('allMatchedSample','Rep'))
-# when join by matched sample AND rep, are filtering out all reads from wrong rep
-# filters out ~27% of rows
-
-
-# ~~ Subset to reads interested in
-sub_Reads = subset(df_MappedReads_withMut, Strain %in% c('LK6-A05', 'LK2-D07')) # only using these because are only two that correctly map (that have good reference pool sequenced)
-sub_Reads = sub_Reads[, c( "allDistances"  , 'allMatchedBC',   "Time",
-                           'Strain', 'Rep', 'env', 'Mut_ID')]
-
-names(sub_Reads) = c('Distance', 'Barcode', "Time", 'Strain', 'Rep', 'env', 'Mut_ID')
-
-# ~~ Use Clustering Algorithm to get final BC_IDs
-uniqueBCs = unique(sub_Reads$Barcode)
-trimmedBC = substr(uniqueBCs, 1, 28) # have to trim so all are 28 bps
-trimmed_uniqueBC  = trimmedBC[nchar(trimmedBC) == 28]
-uniqueBCs_1 = uniqueBCs[nchar(trimmedBC) == 28] # save these bc are bcs which actually amtch with data frame 
-
-clust = seq_cluster(dna(trimmed_uniqueBC), threshold = 0.1, method = "complete")
-
-df_clust = data.frame(uniqueBCs_1, clust)
-names(df_clust) = c('Barcode', 'BC_ID')
-
-BCcounts_thisSamp = inner_join(sub_Reads, df_clust, by = 'Barcode')
-
-
-# ~~ Get final counts for BCs
-neutralMutIDs = c(102,51,99,91,6)
-
-BCcounts_thisSamp_raw = BCcounts_thisSamp %>%
-  group_by(Time, Strain, Rep, env, Mut_ID, BC_ID) %>%
-  summarize(count = length(Strain), .groups = 'keep')
-
-BCcounts_thisSamp_raw = BCcounts_thisSamp_raw %>%
-  group_by(Time, Strain, Rep, env) %>%
-  mutate(totCount_thisTime_Strain_rep_env = sum(count))
-
-BCcounts_thisSamp_raw$freq = BCcounts_thisSamp_raw$count / BCcounts_thisSamp_raw$totCount_thisTime_Strain_rep_env
-BCcounts_thisSamp_raw$isNeutral = BCcounts_thisSamp_raw$Mut_ID %in% neutralMutIDs
-
-
-# ~~ Subset data for min initial freq, calc median neutral 
-BCcounts_thisSamp_raw = subset(BCcounts_thisSamp_raw, Time != 'T-1')
-BCcounts_thisSamp_raw$timeNum = substr(BCcounts_thisSamp_raw$Time,2,2)
-
-BCcounts_thisSamp_raw = BCcounts_thisSamp_raw %>%
-  group_by(Strain, BC_ID, env, Rep,Mut_ID) %>%
-  mutate(initialFreq = freq[which.min(timeNum)])
-
-sub = subset(BCcounts_thisSamp_raw,initialFreq > 1e-04 )
-
-sub = sub %>%
-  group_by(Strain, env, Rep, Time) %>%
-  mutate(medianNeutral = median(count[isNeutral == T]), na.rm = T)
-
-sub$relCount = sub$count / sub$medianNeutral
-
-
-# ~ Put data into time intervals
-myBC_counts_T0 = subset(sub, Time == 'T0')
-myBC_counts_T1 = subset(sub, Time == 'T1')
-myBC_counts_T2 = subset(sub, Time == 'T2')
-myBC_counts_T3 = subset(sub, Time == 'T3')
-myBC_counts_T4 = subset(sub, Time == 'T4')
-
-myBC_counts_TimeInt_1 = full_join(myBC_counts_T0, myBC_counts_T1, by = c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
-myBC_counts_TimeInt_1$timeInt = rep(1, times = length(myBC_counts_TimeInt_1$env))
-myBC_counts_TimeInt_2 = full_join(myBC_counts_T1, myBC_counts_T2, by =  c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
-myBC_counts_TimeInt_2$timeInt = rep(2, times = length(myBC_counts_TimeInt_2$env))
-myBC_counts_TimeInt_3 = full_join(myBC_counts_T2, myBC_counts_T3, by =  c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
-myBC_counts_TimeInt_3$timeInt = rep(3, times = length(myBC_counts_TimeInt_3$env))
-myBC_counts_TimeInt_4 = full_join(myBC_counts_T3, myBC_counts_T4,by =  c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
-myBC_counts_TimeInt_4$timeInt = rep(4, times = length(myBC_counts_TimeInt_4$env))
-
-
-# ~ Put all together
-my_bc_counts_full_TimeIntervals = rbind(myBC_counts_TimeInt_1,myBC_counts_TimeInt_2,myBC_counts_TimeInt_3,myBC_counts_TimeInt_4)
-
-
-# ~ Get S-ests for all BCs
-# ~~~ assuming 12 hour transfers, dont see her say different anywhere
-my_bc_counts_full_TimeIntervals$s_est = (1/12)*log(  my_bc_counts_full_TimeIntervals$relCount.y  /my_bc_counts_full_TimeIntervals$relCount.x  )
-
-
-# ~ Compare to my s-ests  from Main Exp 
-df_s_est_repsPooled = my_bc_counts_full_TimeIntervals %>%
-  group_by( env, Strain, Mut_ID, isNeutral ) %>%
-  summarize(avgS = mean(s_est, na.rm = T), varS = var(s_est, na.rm = T), seS = sd(s_est, na.rm = T)/sqrt(sum(!is.na(s_est))))
-
-
-df_s_est_repsPooled$env[df_s_est_repsPooled$env == 'e1'] = '30SC5'
-df_s_est_repsPooled$env[df_s_est_repsPooled$env == 'e2'] = '37SC7'
-
-sub_df_s_ests_wGR = subset(df_s_ests_wGR,  Strain %in% c( "LK1-C09" ,"LK1-H02", "LK2-D07", "LK5-C04" ,"LK6-A05") & Mut_ID %in% c( 6 ,  10 , 66 , 71 , 99,  117 ,127) & env %in% c('30SC5', '37SC7'))
-
-sub_df_s_ests_wGR$Mut_ID = as.factor(sub_df_s_ests_wGR$Mut_ID)
-df_s_est_repsPooled$Mut_ID = as.factor(df_s_est_repsPooled$Mut_ID)
-
-joined = full_join(sub_df_s_ests_wGR, df_s_est_repsPooled, by = c('Strain', 'env', 'Mut_ID'))
-joined = subset(joined, !is.na(avgS.x) & !is.na(avgS.y))
-
-
-confExp = ggplot(joined, aes(x = avgS.x, y = avgS.y, color = env,fill = env, shape = factor(Mut_ID)))+
-  geom_linerange(aes(xmin = avgS.x -  seS.x, xmax = avgS.x +  seS.x), alpha = 0.9)+
-  geom_linerange(aes(ymin = avgS.y -  seS.y, ymax = avgS.y +  seS.y), alpha = 0.9)+
-  geom_point(size = 2.1, alpha = 1, color = 'white')+
-  geom_point(size = 2.1, alpha = 0.75)+
-  scale_color_manual(values = c('#295DCC', '#FBCF96'), drop = FALSE)+
-  scale_alpha_manual(values = c(0.3,0.9))+
-  scale_fill_manual(values = c('#295DCC', '#FBCF96'), drop = FALSE)+
-  scale_shape_manual(values = c(21,22,23,24,25,4))+
-  xlab('Main Experiment')+
-  ylab('Confirmation Experiment')+
-  geom_abline(slope = 1, intercept = 0, color = 'grey', linewidth = 0.5)+
-  theme_classic()+
-  scale_x_continuous(breaks = c(-0.1,0,0.1))+
-  scale_y_continuous(breaks = c(-0.1,0,0.1))+
-  theme(axis.line = element_line(linewidth = 0.5, color = 'black'),
-        axis.ticks = element_line(linewidth = 0.5, color = 'black'),
-        axis.title = element_text(color = 'black', size = 11),
-        axis.text =  element_text(color = 'black', size = 11),
-        legend.text = element_text(color = 'black', size = 11),
-        legend.position = 'none') #text(color = 'black', size = 10,angle = 90)
-
-summary(lm(avgS.y ~ avgS.x, data = joined))
-# Rsq = 0.73 when I do exlude NA in getting avgS (which is the right way to do it)
-
-#ggsave(paste0(fileSave, 'confExp.pdf'), confExp, width = 2.8/1.35,height =3.2/1.2)
-
-
-
-
-## Get barcode association file from BCcounts_thisSamp
-BCassociation = BCcounts_thisSamp %>%
-  group_by(Barcode, Strain, Rep, env, Mut_ID) %>%
-  summarise(numTimes = length(Distance))
-
-BCassociation = BCassociation[, names(BCassociation) != c('numTimes')]
-BCassociation$env[BCassociation$env == 'e1'] = '30SC5'
-BCassociation$env[BCassociation$env == 'e2'] = '37SC7'
-
-#write.csv(BCassociation, 'BCassociation.csv')
-
+# 
+# ## DATA NEEDED
+# allBCs_Matches = read.csv("allBarcodeMatches.csv")
+# transferODtable = read.csv("TransferODTable.csv")
+# #df_s_ests_wGR = read.csv(  paste0('df_s_ests_wGR_myGRest.csv'))
+# 
+# 
+# ## Analysis
+# transferODtable$Strain = substr(transferODtable$Sample, 4,10)
+# transferODtable$Rep = substr(transferODtable$Sample, 1,2)
+# 
+# mutInfoDF = subset(transferODtable, (Rep %in% c('1-', '2-')))
+# 
+# transferODtable = subset(transferODtable, !(Rep %in% c('1-', '2-'))) # get rid of rows with the libary IDs 
+# transferODtable$env = NA
+# transferODtable$env[transferODtable$ID %in% 1:60] = 'e1'
+# transferODtable$env[transferODtable$ID %in% 61:102] = 'e2'
+# names(transferODtable)[names(transferODtable) == 'ID'] = 'samp'
+# transferODtable$samp = as.factor(transferODtable$samp)
+# 
+# 
+# # ~~ Add sample and Mut Info to data frame
+# names(transferODtable)[names(transferODtable) == 'samp'] = 'sampID'
+# transferODtable$sampID = as.numeric(transferODtable$samp)
+# 
+# df_MappedReads_use = inner_join(allBCs_Matches, transferODtable, by = 'sampID')
+# mutInfoDF = mutInfoDF[, c('ID', 'Strain', 'Rep')]
+# names(mutInfoDF) = c('allMatchedSample_name','Mut_ID', 'Rep' )
+# mutInfoDF$Rep = substr(mutInfoDF$Rep,1,1)
+# mutInfoDF$allMatchedSample = paste0('sample_', mutInfoDF$allMatchedSample_name)
+# mutInfoDF$Rep = paste0('R', mutInfoDF$Rep)
+# mutInfoDF = mutInfoDF[, c('allMatchedSample', 'Mut_ID', 'Rep')]
+# 
+# 
+# df_MappedReads_withMut = inner_join(df_MappedReads_use, mutInfoDF, by = c('allMatchedSample','Rep'))
+# # when join by matched sample AND rep, are filtering out all reads from wrong rep
+# # filters out ~27% of rows
+# 
+# 
+# # ~~ Subset to reads interested in
+# sub_Reads = subset(df_MappedReads_withMut, Strain %in% c('LK6-A05', 'LK2-D07')) # only using these because are only two that correctly map (that have good reference pool sequenced)
+# sub_Reads = sub_Reads[, c( "allDistances"  , 'allMatchedBC',   "Time",
+#                            'Strain', 'Rep', 'env', 'Mut_ID')]
+# 
+# names(sub_Reads) = c('Distance', 'Barcode', "Time", 'Strain', 'Rep', 'env', 'Mut_ID')
+# 
+# # ~~ Use Clustering Algorithm to get final BC_IDs
+# uniqueBCs = unique(sub_Reads$Barcode)
+# trimmedBC = substr(uniqueBCs, 1, 28) # have to trim so all are 28 bps
+# trimmed_uniqueBC  = trimmedBC[nchar(trimmedBC) == 28]
+# uniqueBCs_1 = uniqueBCs[nchar(trimmedBC) == 28] # save these bc are bcs which actually amtch with data frame 
+# 
+# clust = seq_cluster(dna(trimmed_uniqueBC), threshold = 0.1, method = "complete")
+# 
+# df_clust = data.frame(uniqueBCs_1, clust)
+# names(df_clust) = c('Barcode', 'BC_ID')
+# 
+# BCcounts_thisSamp = inner_join(sub_Reads, df_clust, by = 'Barcode')
+# 
+# 
+# # ~~ Get final counts for BCs
+# neutralMutIDs = c(102,51,99,91,6)
+# 
+# BCcounts_thisSamp_raw = BCcounts_thisSamp %>%
+#   group_by(Time, Strain, Rep, env, Mut_ID, BC_ID) %>%
+#   summarize(count = length(Strain), .groups = 'keep')
+# 
+# BCcounts_thisSamp_raw = BCcounts_thisSamp_raw %>%
+#   group_by(Time, Strain, Rep, env) %>%
+#   mutate(totCount_thisTime_Strain_rep_env = sum(count))
+# 
+# BCcounts_thisSamp_raw$freq = BCcounts_thisSamp_raw$count / BCcounts_thisSamp_raw$totCount_thisTime_Strain_rep_env
+# BCcounts_thisSamp_raw$isNeutral = BCcounts_thisSamp_raw$Mut_ID %in% neutralMutIDs
+# 
+# 
+# # ~~ Subset data for min initial freq, calc median neutral 
+# BCcounts_thisSamp_raw = subset(BCcounts_thisSamp_raw, Time != 'T-1')
+# BCcounts_thisSamp_raw$timeNum = substr(BCcounts_thisSamp_raw$Time,2,2)
+# 
+# BCcounts_thisSamp_raw = BCcounts_thisSamp_raw %>%
+#   group_by(Strain, BC_ID, env, Rep,Mut_ID) %>%
+#   mutate(initialFreq = freq[which.min(timeNum)])
+# 
+# sub = subset(BCcounts_thisSamp_raw,initialFreq > 1e-04 )
+# 
+# sub = sub %>%
+#   group_by(Strain, env, Rep, Time) %>%
+#   mutate(medianNeutral = median(count[isNeutral == T]), na.rm = T)
+# 
+# sub$relCount = sub$count / sub$medianNeutral
+# 
+# 
+# # ~ Put data into time intervals
+# myBC_counts_T0 = subset(sub, Time == 'T0')
+# myBC_counts_T1 = subset(sub, Time == 'T1')
+# myBC_counts_T2 = subset(sub, Time == 'T2')
+# myBC_counts_T3 = subset(sub, Time == 'T3')
+# myBC_counts_T4 = subset(sub, Time == 'T4')
+# 
+# myBC_counts_TimeInt_1 = full_join(myBC_counts_T0, myBC_counts_T1, by = c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
+# myBC_counts_TimeInt_1$timeInt = rep(1, times = length(myBC_counts_TimeInt_1$env))
+# myBC_counts_TimeInt_2 = full_join(myBC_counts_T1, myBC_counts_T2, by =  c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
+# myBC_counts_TimeInt_2$timeInt = rep(2, times = length(myBC_counts_TimeInt_2$env))
+# myBC_counts_TimeInt_3 = full_join(myBC_counts_T2, myBC_counts_T3, by =  c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
+# myBC_counts_TimeInt_3$timeInt = rep(3, times = length(myBC_counts_TimeInt_3$env))
+# myBC_counts_TimeInt_4 = full_join(myBC_counts_T3, myBC_counts_T4,by =  c('env','Strain', 'Mut_ID', 'Rep',  'BC_ID','isNeutral'))
+# myBC_counts_TimeInt_4$timeInt = rep(4, times = length(myBC_counts_TimeInt_4$env))
+# 
+# 
+# # ~ Put all together
+# my_bc_counts_full_TimeIntervals = rbind(myBC_counts_TimeInt_1,myBC_counts_TimeInt_2,myBC_counts_TimeInt_3,myBC_counts_TimeInt_4)
+# 
+# 
+# # ~ Get S-ests for all BCs
+# # ~~~ assuming 12 hour transfers, dont see her say different anywhere
+# my_bc_counts_full_TimeIntervals$s_est = (1/12)*log(  my_bc_counts_full_TimeIntervals$relCount.y  /my_bc_counts_full_TimeIntervals$relCount.x  )
+# 
+# 
+# # ~ Compare to my s-ests  from Main Exp 
+# df_s_est_repsPooled = my_bc_counts_full_TimeIntervals %>%
+#   group_by( env, Strain, Mut_ID, isNeutral ) %>%
+#   summarize(avgS = mean(s_est, na.rm = T), varS = var(s_est, na.rm = T), seS = sd(s_est, na.rm = T)/sqrt(sum(!is.na(s_est))))
+# 
+# 
+# df_s_est_repsPooled$env[df_s_est_repsPooled$env == 'e1'] = '30SC5'
+# df_s_est_repsPooled$env[df_s_est_repsPooled$env == 'e2'] = '37SC7'
+# 
+# sub_df_s_ests_wGR = subset(df_s_ests_wGR,  Strain %in% c( "LK1-C09" ,"LK1-H02", "LK2-D07", "LK5-C04" ,"LK6-A05") & Mut_ID %in% c( 6 ,  10 , 66 , 71 , 99,  117 ,127) & env %in% c('30SC5', '37SC7'))
+# 
+# sub_df_s_ests_wGR$Mut_ID = as.factor(sub_df_s_ests_wGR$Mut_ID)
+# df_s_est_repsPooled$Mut_ID = as.factor(df_s_est_repsPooled$Mut_ID)
+# 
+# joined = full_join(sub_df_s_ests_wGR, df_s_est_repsPooled, by = c('Strain', 'env', 'Mut_ID'))
+# joined = subset(joined, !is.na(avgS.x) & !is.na(avgS.y))
+# 
+# 
+# confExp = ggplot(joined, aes(x = avgS.x, y = avgS.y, color = env,fill = env, shape = factor(Mut_ID)))+
+#   geom_linerange(aes(xmin = avgS.x -  seS.x, xmax = avgS.x +  seS.x), alpha = 0.9)+
+#   geom_linerange(aes(ymin = avgS.y -  seS.y, ymax = avgS.y +  seS.y), alpha = 0.9)+
+#   geom_point(size = 2.1, alpha = 1, color = 'white')+
+#   geom_point(size = 2.1, alpha = 0.75)+
+#   scale_color_manual(values = c('#295DCC', '#FBCF96'), drop = FALSE)+
+#   scale_alpha_manual(values = c(0.3,0.9))+
+#   scale_fill_manual(values = c('#295DCC', '#FBCF96'), drop = FALSE)+
+#   scale_shape_manual(values = c(21,22,23,24,25,4))+
+#   xlab('Main Experiment')+
+#   ylab('Confirmation Experiment')+
+#   geom_abline(slope = 1, intercept = 0, color = 'grey', linewidth = 0.5)+
+#   theme_classic()+
+#   scale_x_continuous(breaks = c(-0.1,0,0.1))+
+#   scale_y_continuous(breaks = c(-0.1,0,0.1))+
+#   theme(axis.line = element_line(linewidth = 0.5, color = 'black'),
+#         axis.ticks = element_line(linewidth = 0.5, color = 'black'),
+#         axis.title = element_text(color = 'black', size = 11),
+#         axis.text =  element_text(color = 'black', size = 11),
+#         legend.text = element_text(color = 'black', size = 11),
+#         legend.position = 'none') #text(color = 'black', size = 10,angle = 90)
+# 
+# summary(lm(avgS.y ~ avgS.x, data = joined))
+# # Rsq = 0.73 when I do exlude NA in getting avgS (which is the right way to do it)
+# 
+# #ggsave(paste0(fileSave, 'confExp.pdf'), confExp, width = 2.8/1.35,height =3.2/1.2)
+# 
+# 
+# 
+# 
+# ## Get barcode association file from BCcounts_thisSamp
+# BCassociation = BCcounts_thisSamp %>%
+#   group_by(Barcode, Strain, Rep, env, Mut_ID) %>%
+#   summarise(numTimes = length(Distance))
+# 
+# BCassociation = BCassociation[, names(BCassociation) != c('numTimes')]
+# BCassociation$env[BCassociation$env == 'e1'] = '30SC5'
+# BCassociation$env[BCassociation$env == 'e2'] = '37SC7'
+# 
+# #write.csv(BCassociation, 'BCassociation.csv')
+# 
 
 
 # ~~ Plot: Correlation Correction ####
