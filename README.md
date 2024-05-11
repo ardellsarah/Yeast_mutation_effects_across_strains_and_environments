@@ -1,5 +1,5 @@
 # Yeast_mutation_effects_across_strains_and_environments
-This repository contains all relevant code for completing analyses and producing figures for the paper 'Environment-independent distribution of mutational effects emerges from microscopic epistasis'. To use this code, you will need an updated version of R. To properly run this code ensure:
+This repository contains all relevant code for completing analyses and producing figures for the paper 'Environment-independent distribution of mutational effects emerges from microscopic epistasis'. To use this code, you will need an updated version of R. NOTE: All Files and Scripts here are preliminary. Finalized data and scripts will be uploaded upon the manuscript's acceptance. To properly run this code ensure:
 1. You have installed all packages listed at the top of the script.
 2. You update the working directory (and, optionally, the path to save files) on lines 38-39. The code will only run if your working directory has all relevant files.
 
